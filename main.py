@@ -1,64 +1,51 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import asyncio
+import concurrent.futures
+import logging
 import logging.handlers
 import os
 import signal
 import sys
+import threading
 from typing import *
+
+import wx
 
 import blcsdk
 import config
 import listener
+from gui import VoteFrame
 
 logger = logging.getLogger('niconico-rating')
 
-shut_down_event: Optional[asyncio.Event] = None
+app: Optional['VoteApp'] = None
 
 
-async def main():
-    try:
-        await init()
-        # 不等待信号，直接运行GUI
-        print("🎯 程序已启动，GUI将在主线程中运行")
-    except Exception as e:
-        logger.error(f"启动失败: {e}")
-        return 1
-    return 0
-
-
-async def init():
-    print("🔧 初始化投票系统...")
+def main():
     init_signal_handlers()
     init_logging()
-
-    print("🔌 初始化blcsdk...")
-    await blcsdk.init()
-    if not blcsdk.is_sdk_version_compatible():
-        raise RuntimeError('SDK version is not compatible')
-
-    print("🚀 初始化listener和GUI...")
-    await listener.init()
-    print("✅ 初始化完成")
+    
+    global app
+    app = VoteApp()
+    
+    logger.info('Running event loop')
+    app.MainLoop()
 
 
 def init_signal_handlers():
-    global shut_down_event
-    shut_down_event = asyncio.Event()
+    def signal_handler(*_args):
+        wx.CallAfter(start_shut_down)
 
-    signums = (signal.SIGINT, signal.SIGTERM)
-    try:
-        loop = asyncio.get_running_loop()
-        for signum in signums:
-            loop.add_signal_handler(signum, start_shut_down)
-    except NotImplementedError:
-        # 不太安全，但Windows只能用这个
-        for signum in signums:
-            signal.signal(signum, start_shut_down)
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, signal_handler)
 
 
-def start_shut_down(*_args):
-    shut_down_event.set()
+def start_shut_down():
+    if app is not None and app.IsMainLoopRunning():
+        app.ExitMainLoop()
+    else:
+        wx.Exit()
 
 
 def init_logging():
@@ -66,6 +53,9 @@ def init_logging():
     os.makedirs(config.LOG_PATH, exist_ok=True)
     
     filename = os.path.join(config.LOG_PATH, 'niconico-rating.log')
+    # 启动时清空log文件
+    with open(filename, 'w', encoding='utf-8'):
+        pass
     stream_handler = logging.StreamHandler()
     file_handler = logging.handlers.TimedRotatingFileHandler(
         filename, encoding='utf-8', when='midnight', backupCount=7, delay=True
@@ -78,18 +68,93 @@ def init_logging():
     )
 
 
-async def run():
-    logger.info('Running niconico rating system')
-    print("🔄 投票系统运行中，等待信号...")
-    await shut_down_event.wait()
-    logger.info('Start to shut down')
+class VoteApp(wx.App):
+    def __init__(self, *args, **kwargs):
+        self._network_worker = NetworkWorker()
+        self._dummy_timer: Optional[wx.Timer] = None
+        self._vote_frame: Optional[VoteFrame] = None
+        
+        super().__init__(*args, clearSigInt=False, **kwargs)
+        self.SetExitOnFrameDelete(False)
+
+    def OnInit(self):
+        # 这个定时器只是为了及时响应信号，因为只有处理UI事件时才会唤醒主线程
+        self._dummy_timer = wx.Timer(self)
+        self._dummy_timer.Start(1000)
+        self.Bind(wx.EVT_TIMER, lambda _event: None, self._dummy_timer)
+
+        # 创建投票窗口
+        self._vote_frame = VoteFrame(None)
+        self._vote_frame.Show()
+
+        # 初始化网络工作线程
+        self._network_worker.init()
+        return True
+
+    def OnExit(self):
+        logger.info('Start to shut down')
+        
+        self._network_worker.start_shut_down()
+        self._network_worker.join(10)
+        
+        return super().OnExit()
 
 
-async def shut_down():
-    print("🛑 正在关闭系统...")
-    listener.shut_down()
-    await blcsdk.shut_down()
+class NetworkWorker:
+    def __init__(self):
+        self._worker_thread = threading.Thread(
+            target=asyncio.run, args=(self._worker_thread_func(),), daemon=True
+        )
+        self._thread_init_future = concurrent.futures.Future()
+        
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._shut_down_event: Optional[asyncio.Event] = None
+
+    def init(self):
+        self._worker_thread.start()
+        self._thread_init_future.result(10)
+
+    def start_shut_down(self):
+        if self._shut_down_event is not None:
+            self._loop.call_soon_threadsafe(self._shut_down_event.set)
+
+    def join(self, timeout=None):
+        self._worker_thread.join(timeout)
+        return not self._worker_thread.is_alive()
+
+    async def _worker_thread_func(self):
+        self._loop = asyncio.get_running_loop()
+        try:
+            try:
+                await self._init_in_worker_thread()
+                self._thread_init_future.set_result(None)
+            except BaseException as e:
+                self._thread_init_future.set_exception(e)
+                return
+
+            await self._run()
+        finally:
+            await self._shut_down()
+
+    async def _init_in_worker_thread(self):
+        await blcsdk.init()
+        if not blcsdk.is_sdk_version_compatible():
+            raise RuntimeError('SDK version is not compatible')
+
+        await listener.init()
+        
+        self._shut_down_event = asyncio.Event()
+
+    async def _run(self):
+        logger.info('Running network thread event loop')
+        await self._shut_down_event.wait()
+        logger.info('Network thread start to shut down')
+
+    @staticmethod
+    async def _shut_down():
+        listener.shut_down()
+        await blcsdk.shut_down()
 
 
 if __name__ == '__main__':
-    sys.exit(asyncio.run(main()))
+    main()

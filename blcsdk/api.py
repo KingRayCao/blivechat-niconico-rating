@@ -71,12 +71,11 @@ async def init():
         _init_future = asyncio.get_running_loop().create_future()
 
         # 初始化环境变量信息
-        # _blc_port = int(os.environ['BLC_PORT'])
-        _blc_port = 12450
+        _blc_port = int(os.environ['BLC_PORT'])
+        # _blc_port = 12450
         _blc_base_url = f'http://localhost:{_blc_port}'
         blc_ws_url = f'ws://localhost:{_blc_port}/api/plugin/websocket'
-        # _token = os.environ['BLC_TOKEN']
-        _token = 'eFf96FF7ACEcCaa1bc69de2E521FBaEf'
+        _token = os.environ['BLC_TOKEN']
 
         _http_session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=10),

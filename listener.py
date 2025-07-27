@@ -1,57 +1,55 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import __main__
-import datetime
 import logging
-import os
-import sys
-import threading
 import re
-from typing import *
+from typing import Optional, TYPE_CHECKING
+
+import wx
 
 import blcsdk
+import blcsdk.api as sdk_api
 import blcsdk.models as sdk_models
 import config
-import gui
+
+if TYPE_CHECKING:
+    from gui import VoteFrame
 
 logger = logging.getLogger('niconico-rating.' + __name__)
 
 _msg_handler: Optional['VoteHandler'] = None
-_gui_app: Optional[gui.VoteSystemGUI] = None
+_vote_frame: Optional['VoteFrame'] = None
 
 
 async def init():
-    global _msg_handler, _gui_app
-    
-    print("🎨 创建GUI...")
-    # 创建GUI但不启动
-    _gui_app = gui.VoteSystemGUI()
-    print("✅ GUI创建完成")
+    global _msg_handler
     
     print("📡 设置消息处理器...")
     _msg_handler = VoteHandler()
     blcsdk.set_msg_handler(_msg_handler)
+    print("✅ 消息处理器设置完成")
     
-    # 创建已有的房间。这一步失败了也没关系，只是有消息时才会创建文件
+    # 房间管理（仅日志记录，不创建文件）
     try:
-        blc_rooms = await blcsdk.get_rooms()
+        blc_rooms = await sdk_api.get_rooms()
         for blc_room in blc_rooms:
             if blc_room.room_id is not None:
                 logger.info(f'发现已有房间: {blc_room.room_id}')
-    except blcsdk.SdkError:
+    except sdk_api.SdkError:
         pass
     
     logger.info('niconico风格投票系统已启动')
     print("🎉 投票系统启动完成！")
-    
-    # 启动GUI（在主线程中）
-    print("🚀 启动GUI...")
-    _gui_app.run()
 
 
 def shut_down():
     blcsdk.set_msg_handler(None)
-    if _gui_app:
-        _gui_app.root.quit()
+
+
+def set_vote_frame(frame):
+    """设置投票窗口引用"""
+    global _vote_frame
+    _vote_frame = frame
 
 
 class VoteHandler(blcsdk.BaseHandler):
@@ -61,24 +59,29 @@ class VoteHandler(blcsdk.BaseHandler):
         self._compiled_patterns = {}
         self._is_counting = False
         self._update_patterns()
+        logger.info("VoteHandler初始化完成")
     
     def _update_patterns(self):
         """更新编译后的正则表达式"""
-        if not _gui_app:
+        if not _vote_frame:
+            logger.warning("GUI应用未初始化，无法更新正则表达式")
             return
             
         self._compiled_patterns.clear()
-        self._is_counting = _gui_app.is_counting
+        self._is_counting = _vote_frame.is_counting
         
         if not self._is_counting:
+            logger.info("当前未在统计状态，正则表达式已清空")
             return
-            
+        
         # 获取GUI中的投票等级设置并编译
-        for level, pattern in _gui_app.vote_levels.items():
+        for level, pattern in _vote_frame.vote_levels.items():
             try:
                 self._compiled_patterns[level] = re.compile(pattern)
+                logger.debug(f"等级 {level} 正则表达式编译成功: {pattern}")
             except re.error as e:
                 logger.warning(f'等级 {level} 的正则表达式编译失败: {pattern}, 错误: {e}')
+        logger.info(f"正则表达式更新完成，共 {len(self._compiled_patterns)} 个模式")
     
     def _should_process_vote(self, content: str) -> bool:
         """判断是否需要处理投票消息"""
@@ -106,15 +109,15 @@ class VoteHandler(blcsdk.BaseHandler):
 
     def on_client_stopped(self, client: blcsdk.BlcPluginClient, exception: Optional[Exception]):
         logger.info('blivechat disconnected')
-        __main__.start_shut_down()
+        wx.CallAfter(__main__.start_shut_down)
 
     def _on_open_plugin_admin_ui(
         self, client: blcsdk.BlcPluginClient, message: sdk_models.OpenPluginAdminUiMsg, extra: sdk_models.ExtraData
     ):
         # 打开GUI窗口
-        if _gui_app:
-            _gui_app.root.lift()
-            _gui_app.root.focus_force()
+        if _vote_frame:
+            wx.CallAfter(_vote_frame.Raise)
+            wx.CallAfter(_vote_frame.SetFocus)
 
     def _on_add_room(
         self, client: blcsdk.BlcPluginClient, message: sdk_models.AddRoomMsg, extra: sdk_models.ExtraData
@@ -139,22 +142,24 @@ class VoteHandler(blcsdk.BaseHandler):
             logger.info(f'房间 {extra.room_id} 已删除')
 
     def _on_add_text(self, client: blcsdk.BlcPluginClient, message: sdk_models.AddTextMsg, extra: sdk_models.ExtraData):
-        logger.info(f'收到弹幕: {message.author_name}: {message.content}')
-
         if extra.is_from_plugin:
             return
         
+        # 记录所有非插件弹幕
+        logger.info(f'收到弹幕: {message.author_name}: {message.content}')
+
         # 预过滤：只处理可能匹配的弹幕
         if self._should_process_vote(message.content):
             # 获取投票等级
             vote_level = self._get_vote_level(message.content)
-            if vote_level and _gui_app:
-                # 直接传递投票等级给GUI，避免重复匹配
-                _gui_app.process_vote_by_level(message.uid, vote_level)
-                # logger.debug(f'投票弹幕: {message.author_name}: {message.content} -> 等级 {vote_level}')
-        # else:
-            # 记录非投票弹幕（可选，用于调试）
-            # logger.debug(f'收到弹幕: {message.author_name}: {message.content}')
+            if vote_level and _vote_frame:
+                # 使用wx.CallAfter确保在主线程中更新GUI
+                wx.CallAfter(_vote_frame.process_vote_by_level, message.uid, vote_level)
+                logger.debug(f'投票弹幕: {message.author_name}: {message.content} -> 等级 {vote_level}')
+            else:
+                logger.warning(f'投票弹幕处理失败: vote_level={vote_level}, _vote_frame={_vote_frame is not None}')
+        else:
+            logger.debug(f'弹幕不匹配投票规则: {message.content}')
 
     def _on_add_gift(self, client: blcsdk.BlcPluginClient, message: sdk_models.AddGiftMsg, extra: sdk_models.ExtraData):
         # 礼物消息不参与投票
