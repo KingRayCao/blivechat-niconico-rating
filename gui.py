@@ -1,25 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import re
-import threading
-import time
-from typing import Dict, Optional
 
 import wx
 import wx.grid
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-from matplotlib.figure import Figure
-import numpy as np
 
-import config
 import listener
-
-# 设置matplotlib字体以支持中文
-import matplotlib
-matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
-matplotlib.rcParams['axes.unicode_minus'] = False
-
 
 class VoteFrame(wx.Frame):
     def __init__(self, parent):
@@ -197,7 +183,7 @@ class VoteFrame(wx.Frame):
                          "测试结果", wx.OK | wx.ICON_INFORMATION)
         except re.error as e:
             wx.MessageBox(f"等级 {level} 的正则表达式 '{pattern}' 编译失败：{e}", 
-                         "测试结果", wx.OK | wx.ICON_WARNING)
+                         "测试结果", wx.OK | wx.ICON_INFORMATION)
     
     def start_counting(self, event):
         """开始统计"""
@@ -250,13 +236,13 @@ class VoteFrame(wx.Frame):
             return
         
         # 检查是否已经投票
-        # if uid not in self.vote_records:
-        #     self.vote_records[uid] = level
-        #     self.vote_counts[level] += 1
-        #     self.total_votes += 1
+        if uid not in self.vote_records:
+            self.vote_records[uid] = level
+            self.vote_counts[level] += 1
+            self.total_votes += 1
         # 测试用
-        self.vote_counts[level] += 1
-        self.total_votes += 1
+        # self.vote_counts[level] += 1
+        # self.total_votes += 1
     
     def on_update_timer(self, event):
         """定时器事件，更新显示"""
@@ -277,7 +263,7 @@ class VoteFrame(wx.Frame):
     def show_results(self, event, mode="niconico"):
         """显示结果窗口"""
         if self.total_votes == 0:
-            wx.MessageBox("暂无投票数据！", "警告", wx.OK | wx.ICON_WARNING)
+            wx.MessageBox("暂无投票数据！", "警告", wx.OK | wx.ICON_INFORMATION)
             return
         
         # 创建结果窗口
@@ -286,9 +272,9 @@ class VoteFrame(wx.Frame):
     
     def on_close(self, event):
         """窗口关闭事件"""
-        print("🛑 GUI窗口正在关闭...")
-        self.update_timer.Stop()
-        event.Skip()
+        # 禁止关闭主界面
+        wx.MessageBox("为防止误操作，此界面无法被关闭！\n如需关闭，请直接关闭blivechat主程序！", "提示", wx.OK | wx.ICON_INFORMATION)
+        # 不调用 event.Skip()，不关闭窗口
 
 
 class ResultWindow(wx.Frame):
@@ -301,10 +287,10 @@ class ResultWindow(wx.Frame):
     ]
     COLORS = [
         "#4FC3F7",  # 蓝
-        "#4FC3F7",  # 蓝
-        "#4FC3F7",  # 蓝
-        "#4FC3F7",  # 蓝
-        "#4FC3F7",  # 蓝
+        "#4FC3F7",
+        "#4FC3F7",
+        "#4FC3F7",
+        "#4FC3F7"
     ]
     CARD_SIZE = (220, 120)
 
@@ -318,6 +304,7 @@ class ResultWindow(wx.Frame):
     def setup_ui(self):
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
+
         # 计算百分比
         if self.total_count == 0:
             percents = [0] * 5
@@ -328,42 +315,70 @@ class ResultWindow(wx.Frame):
                 counts = [nico_counts[l] for l in range(1, 6)]
             else:
                 counts = [self.vote_counts[l] for l in range(1, 6)]
-            percents = [count / max(self.total_count, 1) * 100 for count in counts]
-        # 2+3布局，4/5居中
-        grid = wx.FlexGridSizer(2, 3, 15, 15)
-        # 上排1,2,3
+            percents = [count / max(sum(counts), 1) * 100 for count in counts]
+
+        # 找到最大项索引
+        max_idx = percents.index(max(percents))
+
+        # 上排 3 个卡片
+        top_sizer = wx.BoxSizer(wx.HORIZONTAL)
         for i in range(3):
             card = self.create_card(panel, i + 1, self.LABELS[i], percents[i], self.COLORS[i])
-            grid.Add(card, 1, wx.EXPAND)
-        # 下排：空，4，5
-        grid.Add((0, 0))  # 左空
+            top_sizer.Add(card, 0, wx.ALL, 10)
+
+        # 下排 2 个卡片，居中
+        bottom_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        bottom_sizer.AddStretchSpacer()
         card4 = self.create_card(panel, 4, self.LABELS[3], percents[3], self.COLORS[3])
-        grid.Add(card4, 1, wx.EXPAND)
+        bottom_sizer.Add(card4, 0, wx.ALL, 10)
         card5 = self.create_card(panel, 5, self.LABELS[4], percents[4], self.COLORS[4])
-        grid.Add(card5, 1, wx.EXPAND)
-        main_sizer.Add(grid, 1, wx.ALL | wx.EXPAND, 30)
+        bottom_sizer.Add(card5, 0, wx.ALL, 10)
+        bottom_sizer.AddStretchSpacer()
+
+        main_sizer.Add(top_sizer, 0, wx.ALIGN_CENTER | wx.TOP, 30)
+        main_sizer.Add(bottom_sizer, 0, wx.ALIGN_CENTER | wx.TOP, 10)
+
         panel.SetSizer(main_sizer)
         self.Centre()
 
     def create_card(self, parent_panel, idx, label, percent, color):
-        panel = wx.Panel(parent_panel, size=(220, 120))
-        panel.SetBackgroundColour(color)
-        panel.SetWindowStyle(wx.BORDER_SIMPLE)
-        font_percent = wx.Font(24, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+        panel = wx.Panel(parent_panel, size=self.CARD_SIZE)
+        panel.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        panel.Bind(wx.EVT_PAINT, lambda evt: self.draw_card_background(evt, panel, color))
+
+        font_percent = wx.Font(24, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         font_label = wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
         font_idx = wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD)
+
         sizer = wx.BoxSizer(wx.VERTICAL)
+
         idx_text = wx.StaticText(panel, label=str(idx))
         idx_text.SetFont(font_idx)
         idx_text.SetForegroundColour("#333333")
         sizer.Add(idx_text, 0, wx.TOP | wx.LEFT, 8)
+
         percent_text = wx.StaticText(panel, label=f"{percent:.1f}%")
         percent_text.SetFont(font_percent)
         percent_text.SetForegroundColour("#222222")
         sizer.Add(percent_text, 0, wx.ALIGN_CENTER | wx.TOP, 5)
+
         label_text = wx.StaticText(panel, label=label)
         label_text.SetFont(font_label)
         label_text.SetForegroundColour("#222222")
         sizer.Add(label_text, 0, wx.ALIGN_CENTER | wx.TOP | wx.BOTTOM, 5)
+
         panel.SetSizer(sizer)
-        return panel 
+        return panel
+
+    def draw_card_background(self, event, panel, color):
+        dc = wx.AutoBufferedPaintDC(panel)
+        gdc = wx.GraphicsContext.Create(dc)
+        rect = panel.GetClientRect()
+
+        # 纯色背景，无半透明
+        base_color = wx.Colour(color)
+        brush_color = wx.Colour(base_color.Red(), base_color.Green(), base_color.Blue())
+
+        gdc.SetBrush(wx.Brush(brush_color))
+        gdc.SetPen(wx.Pen("#CCCCCC", 1))
+        gdc.DrawRoundedRectangle(0, 0, rect.width, rect.height, 12)

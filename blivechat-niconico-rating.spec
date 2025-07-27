@@ -23,7 +23,6 @@ DATAS = [
     ('plugin.json', '.'),
     ('LICENSE', '.'),
     ('log/.gitkeep', 'log'),
-    ('config.py', '.'),
 ]
 
 block_cipher = None

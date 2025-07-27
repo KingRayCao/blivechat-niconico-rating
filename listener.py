@@ -10,7 +10,6 @@ import wx
 import blcsdk
 import blcsdk.api as sdk_api
 import blcsdk.models as sdk_models
-import config
 
 if TYPE_CHECKING:
     from gui import VoteFrame
@@ -146,7 +145,7 @@ class VoteHandler(blcsdk.BaseHandler):
             return
         
         # 记录所有非插件弹幕
-        logger.info(f'收到弹幕: {message.author_name}: {message.content}')
+        # logger.info(f'收到弹幕: {message.author_name}: {message.content}')
 
         # 预过滤：只处理可能匹配的弹幕
         if self._should_process_vote(message.content):
@@ -155,11 +154,13 @@ class VoteHandler(blcsdk.BaseHandler):
             if vote_level and _vote_frame:
                 # 使用wx.CallAfter确保在主线程中更新GUI
                 wx.CallAfter(_vote_frame.process_vote_by_level, message.uid, vote_level)
-                logger.debug(f'投票弹幕: {message.author_name}: {message.content} -> 等级 {vote_level}')
+                # logger.debug(f'投票弹幕: {message.author_name}: {message.content} -> 等级 {vote_level}')
             else:
-                logger.warning(f'投票弹幕处理失败: vote_level={vote_level}, _vote_frame={_vote_frame is not None}')
+                # logger.warning(f'投票弹幕处理失败: vote_level={vote_level}, _vote_frame={_vote_frame is not None}')
+                pass
         else:
-            logger.debug(f'弹幕不匹配投票规则: {message.content}')
+            # logger.debug(f'弹幕不匹配投票规则: {message.content}')
+            pass
 
     def _on_add_gift(self, client: blcsdk.BlcPluginClient, message: sdk_models.AddGiftMsg, extra: sdk_models.ExtraData):
         # 礼物消息不参与投票

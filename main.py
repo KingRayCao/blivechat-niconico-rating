@@ -13,7 +13,6 @@ from typing import *
 import wx
 
 import blcsdk
-import config
 import listener
 from gui import VoteFrame
 
@@ -50,9 +49,9 @@ def start_shut_down():
 
 def init_logging():
     # 确保日志目录存在
-    os.makedirs(config.LOG_PATH, exist_ok=True)
+    os.makedirs('log', exist_ok=True)
     
-    filename = os.path.join(config.LOG_PATH, 'niconico-rating.log')
+    filename = os.path.join('log', 'niconico-rating.log')
     # 启动时清空log文件
     with open(filename, 'w', encoding='utf-8'):
         pass

@@ -1,4 +1,2 @@
-matplotlib>=3.5.0
-numpy>=1.21.0
 wxPython>=4.2.1
 PyPubSub>=4.0.3 
