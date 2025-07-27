@@ -1,0 +1,8 @@
+{
+  "name": "niconico风格弹幕投票系统",
+  "version": "1.0.0",
+  "author": "KingRayCao",
+  "description": "基于弹幕消息的类niconico风格投票统计系统。支持1-5级投票，实时统计和结果可视化。",
+  "run": "niconico-rating.exe",
+  "enabled": true
+}

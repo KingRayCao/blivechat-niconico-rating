@@ -1,0 +1,43 @@
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+
+# IDE 配置
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Jupyter Notebook 检查点
+.ipynb_checkpoints
+
+# PyInstaller 生成的文件
+dist/
+build/
+
+# 日志文件
+*.log
+log/
+
+# 单元测试缓存
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# mypy 类型检查缓存
+.mypy_cache/
+
+# 其他
+.DS_Store
+Thumbs.db
