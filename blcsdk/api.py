@@ -72,7 +72,6 @@ async def init():
 
         # 初始化环境变量信息
         _blc_port = int(os.environ['BLC_PORT'])
-        # _blc_port = 12450
         _blc_base_url = f'http://localhost:{_blc_port}'
         blc_ws_url = f'ws://localhost:{_blc_port}/api/plugin/websocket'
         _token = os.environ['BLC_TOKEN']
