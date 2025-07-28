@@ -62,6 +62,8 @@ class VoteFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
     
     def setup_ui(self):
+        icon = wx.Icon(os.path.join(os.path.dirname(__file__), 'icon.ico'), wx.BITMAP_TYPE_ICO)
+        self.SetIcon(icon)
         panel = wx.Panel(self)
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         
@@ -150,8 +152,8 @@ class VoteFrame(wx.Frame):
         result_grid.AddGrowableCol(1, 1)
         result_sizer.Add(result_grid, 0, wx.EXPAND | wx.ALL, 5)
         
-        self.include_repo_checkbox = wx.CheckBox(panel, label="在结果中包含项目地址")
-        self.include_repo_checkbox.SetValue(True)
+        self.include_repo_checkbox = wx.CheckBox(panel, label="在结果中包含github项目地址（帮忙宣传秋梨膏！）")
+        self.include_repo_checkbox.SetValue(False)
         result_sizer.Add(self.include_repo_checkbox, 0, wx.LEFT | wx.BOTTOM, 10)
         
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)

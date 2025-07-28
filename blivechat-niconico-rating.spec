@@ -22,6 +22,7 @@ PYTHONPATH = [
 DATAS = [
     ('plugin.json', '.'),
     ('LICENSE', '.'),
+    ('icon.ico', '.'),
     ('log/.gitkeep', 'log'),
 ]
 
