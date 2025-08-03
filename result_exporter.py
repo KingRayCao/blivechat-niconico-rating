@@ -37,6 +37,9 @@ def export_result_html(title, vote_counts, total_count, labels, filename=None, m
             .title {{
                 font-size: 1.8em;
                 margin-bottom: 30px;
+                font-weight: bold;
+                color: #000000;
+                text-shadow: 0px 0px 4px #ffffff;
             }}
             .cards {{
                 display: flex;
@@ -94,15 +97,18 @@ def export_result_html(title, vote_counts, total_count, labels, filename=None, m
                 margin-top: 40px;
                 font-size: 1.1em;
                 font-weight: bold;
+                text-shadow: 0px 0px 1px #ffffff;
             }}
             .repo {{
                 font-size: 0.85em;
                 color: #888;
                 margin-top: 10px;
+                text-shadow: 0px 0px 1px #ffffff;
             }}
             .repo a {{
                 color: #888;
                 text-decoration: none;
+                text-shadow: 0px 0px 1px #ffffff;
             }}
         </style>
     </head>

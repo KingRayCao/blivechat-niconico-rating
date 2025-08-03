@@ -41,13 +41,19 @@ class SilentInfoDialog(wx.Dialog):
 
 class VoteFrame(wx.Frame):
     def __init__(self, parent):
-        super().__init__(parent, title="niconico风格弹幕投票系统", size=(1000, 700))
+        super().__init__(parent, title="niconico风格弹幕投票系统", size=(800, 800))
         
         self.vote_levels = {1: "^1$", 2: "^2$", 3: "^3$", 4: "^4$", 5: "^5$"}
         self.is_counting = False
         self.vote_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         self.vote_records = {}
         self.total_votes = 0
+        self.label_defaults = ["", "とても良かった", "まぁまぁ良かった", "ふつうだった", "あまり良くなかった", "良くなかった"]
+        
+        # 倒计时相关变量
+        self.countdown_timer = None
+        self.countdown_seconds = 0
+        self.is_countdown_active = False
         
         listener.set_vote_frame(self)
         
@@ -70,52 +76,81 @@ class VoteFrame(wx.Frame):
         vote_group = wx.StaticBox(panel, label="投票弹幕设置")
         vote_sizer = wx.StaticBoxSizer(vote_group, wx.VERTICAL)
         
-        instruction = wx.StaticText(panel, label="请输入各等级对应的正则表达式，留空则使用默认值（只匹配数字1-5）")
+        instruction = wx.StaticText(panel, label="请输入各等级对应的正则表达式，默认只匹配数字1-5")
         vote_sizer.Add(instruction, 0, wx.ALL, 5)
         
         self.vote_entries = {}
-        vote_grid = wx.FlexGridSizer(5, 3, 5, 5)
+        vote_grid = wx.FlexGridSizer(3, 6, 5, 5)
         
         for level in range(1, 6):
             label = wx.StaticText(panel, label=f"等级 {level}:")
             vote_grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
             
-            entry = wx.TextCtrl(panel, value="", size=(300, -1))
-            entry.SetHint(f"默认: ^{level}$")
+            entry = wx.TextCtrl(panel, value=f"^{level}$", size=(250, -1))
             self.vote_entries[level] = entry
             vote_grid.Add(entry, 1, wx.EXPAND)
             
             test_btn = wx.Button(panel, label="测试", id=wx.ID_ANY)
             test_btn.Bind(wx.EVT_BUTTON, lambda evt, l=level: self.test_regex(l))
             vote_grid.Add(test_btn, 0)
-        
-        vote_grid.AddGrowableCol(1, 1)
+
+        vote_grid.AddStretchSpacer()
+        self.setup_btn = wx.Button(panel, label="应用正则表达式设置")
+        self.setup_btn.Bind(wx.EVT_BUTTON, self.apply_settings)  
+        vote_grid.Add(self.setup_btn, 0)
         vote_sizer.Add(vote_grid, 0, wx.EXPAND | wx.ALL, 5)
-        
-        self.setup_btn = wx.Button(panel, label="设置")
-        self.setup_btn.Bind(wx.EVT_BUTTON, self.apply_settings)
-        vote_sizer.Add(self.setup_btn, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+
         
         main_sizer.Add(vote_sizer, 0, wx.EXPAND | wx.ALL, 5)
         
         stats_group = wx.StaticBox(panel, label="统计设置")
-        stats_sizer = wx.StaticBoxSizer(stats_group, wx.HORIZONTAL)
+        stats_sizer = wx.StaticBoxSizer(stats_group, wx.VERTICAL)
         
-        stats_sizer.Add(wx.StaticText(panel, label="初始人数:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        # 第一行：初始人数和倒计时设置
+        first_row = wx.BoxSizer(wx.HORIZONTAL)
+        first_row.Add(wx.StaticText(panel, label="初始人数:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         
         self.initial_count_entry = wx.TextCtrl(panel, value="0", size=(100, -1))
-        stats_sizer.Add(self.initial_count_entry, 0, wx.RIGHT, 20)
+        first_row.Add(self.initial_count_entry, 0, wx.RIGHT, 20)
         
-        self.start_btn = wx.Button(panel, label="开始统计")
+        first_row.Add(wx.StaticText(panel, label="倒计时:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        
+        # 分钟输入框
+        self.minutes_entry = wx.TextCtrl(panel, value="5", size=(50, -1))
+        first_row.Add(self.minutes_entry, 0, wx.RIGHT, 5)
+        first_row.Add(wx.StaticText(panel, label="分"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        
+        # 秒钟输入框
+        self.seconds_entry = wx.TextCtrl(panel, value="0", size=(50, -1))
+        first_row.Add(self.seconds_entry, 0, wx.RIGHT, 5)
+        first_row.Add(wx.StaticText(panel, label="秒"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        
+        first_row.AddStretchSpacer()
+        stats_sizer.Add(first_row, 0, wx.EXPAND | wx.ALL, 5)
+        
+        # 第二行：按钮和倒计时显示
+        second_row = wx.BoxSizer(wx.HORIZONTAL)
+        
+        self.start_btn = wx.Button(panel, label="开始计时统计")
         self.start_btn.Bind(wx.EVT_BUTTON, self.start_counting)
-        stats_sizer.Add(self.start_btn, 0, wx.RIGHT, 5)
+        second_row.Add(self.start_btn, 0, wx.RIGHT, 5)
         
-        self.stop_btn = wx.Button(panel, label="结束统计")
+        self.stop_btn = wx.Button(panel, label="手动结束统计")
         self.stop_btn.Bind(wx.EVT_BUTTON, self.stop_counting)
         self.stop_btn.Enable(False)
-        stats_sizer.Add(self.stop_btn, 0)
+        second_row.Add(self.stop_btn, 0, wx.RIGHT, 20)
         
-        stats_sizer.AddStretchSpacer()
+        # 倒计时显示标签
+        self.countdown_label = wx.StaticText(panel, label="倒计时: 未开始")
+        font = self.countdown_label.GetFont()
+        font.SetPointSize(10)
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        self.countdown_label.SetFont(font)
+        second_row.Add(self.countdown_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        
+        second_row.AddStretchSpacer()
+        stats_sizer.Add(second_row, 0, wx.EXPAND | wx.ALL, 5)
+        
         main_sizer.Add(stats_sizer, 0, wx.EXPAND | wx.ALL, 5)
         
         realtime_group = wx.StaticBox(panel, label="实时统计结果")
@@ -126,10 +161,20 @@ class VoteFrame(wx.Frame):
         self.table.SetColLabelValue(0, "等级")
         self.table.SetColLabelValue(1, "票数")
         self.table.SetColLabelValue(2, "百分比")
-        self.table.SetColSize(0, 100)
-        self.table.SetColSize(1, 100)
-        self.table.SetColSize(2, 100)
+        
+        # 调整列宽，使其更合理
+        self.table.SetColSize(0, 150)   # 等级列
+        self.table.SetColSize(1, 150)   # 票数列
+        self.table.SetColSize(2, 150)   # 百分比列
+        
+        for row in range(5):
+            self.table.SetRowSize(row, 30)
+        
         self.table.EnableEditing(False)
+        
+        self.table.SetMinSize((450, 200))
+        
+        self.table.SetSize((450, 250))
         
         realtime_sizer.Add(self.table, 1, wx.EXPAND | wx.ALL, 5)
         
@@ -145,11 +190,22 @@ class VoteFrame(wx.Frame):
         result_group = wx.StaticBox(panel, label="结果页面设置")
         result_sizer = wx.StaticBoxSizer(result_group, wx.VERTICAL)
         
-        result_grid = wx.FlexGridSizer(1, 2, 5, 5)
+        result_grid = wx.FlexGridSizer(3, 4, 5, 5)
         result_grid.Add(wx.StaticText(panel, label="标题:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.title_entry = wx.TextCtrl(panel, value="Q. 今日の番組はいかがでしたか？", size=(300, -1))
+        self.title_entry = wx.TextCtrl(panel, value="Q. 今日の番組はいかがでしたか？", size=(250, -1))
         result_grid.Add(self.title_entry, 1, wx.EXPAND)
-        result_grid.AddGrowableCol(1, 1)
+
+        # 设置五个等级最终输出的label
+        self.label_entries = {}
+        
+        for level in range(1, 6):
+            label = wx.StaticText(panel, label=f"等级 {level} 标签:")
+            result_grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+            
+            entry = wx.TextCtrl(panel, value=f"{self.label_defaults[level]}", size=(250, -1))
+            self.label_entries[level] = entry
+            result_grid.Add(entry, 1, wx.EXPAND)
+        
         result_sizer.Add(result_grid, 0, wx.EXPAND | wx.ALL, 5)
         
         self.include_repo_checkbox = wx.CheckBox(panel, label="在结果中包含github项目地址（帮忙宣传秋梨膏！）")
@@ -194,7 +250,49 @@ class VoteFrame(wx.Frame):
         except re.error as e:
             SilentInfoDialog(self, f"等级 {level} 的正则表达式 '{pattern}' 编译失败：{e}").ShowModal()
     
+    def start_countdown_timer(self):
+        """启动倒计时定时器"""
+        if self.countdown_timer:
+            self.countdown_timer.Stop()
+        
+        self.countdown_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_countdown_timer, self.countdown_timer)
+        self.countdown_timer.Start(1000)  # 每秒更新一次
+        self.is_countdown_active = True
+    
+    def on_countdown_timer(self, event):
+        """倒计时定时器回调"""
+        if self.countdown_seconds > 0:
+            self.countdown_seconds -= 1
+            minutes = self.countdown_seconds // 60
+            seconds = self.countdown_seconds % 60
+            self.countdown_label.SetLabel(f"倒计时: {minutes:02d}:{seconds:02d}")
+        else:
+            # 倒计时结束，自动停止统计
+            # SilentInfoDialog(self, "倒计时结束，统计已自动停止！").ShowModal()
+            self.stop_counting(None)
+    
+    def stop_countdown_timer(self):
+        """停止倒计时定时器"""
+        if self.countdown_timer:
+            self.countdown_timer.Stop()
+            self.countdown_timer = None
+        self.is_countdown_active = False
+        self.countdown_label.SetLabel("倒计时: 未开始")
+    
     def start_counting(self, event):
+        # 获取倒计时设置
+        try:
+            minutes = int(self.minutes_entry.GetValue())
+            seconds = int(self.seconds_entry.GetValue())
+            self.countdown_seconds = minutes * 60 + seconds
+        except ValueError:
+            self.countdown_seconds = 300  # 默认5分钟
+        
+        if self.countdown_seconds <= 0:
+            SilentInfoDialog(self, "请设置有效的倒计时时间！").ShowModal()
+            return
+        
         self.is_counting = True
         self.vote_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         self.vote_records.clear()
@@ -203,6 +301,15 @@ class VoteFrame(wx.Frame):
             self.total_count = int(self.initial_count_entry.GetValue())
         except ValueError:
             self.total_count = 0
+        
+        # 启动倒计时
+        self.start_countdown_timer()
+        
+        # 显示开始统计的提示信息
+        minutes = self.countdown_seconds // 60
+        seconds = self.countdown_seconds % 60
+        # SilentInfoDialog(self, f"开始统计投票！\n倒计时设置为: {minutes:02d}:{seconds:02d}").ShowModal()
+        
         self.start_btn.Enable(False)
         self.stop_btn.Enable(True)
         self.btn_niconico.Enable(False)
@@ -218,6 +325,14 @@ class VoteFrame(wx.Frame):
     def stop_counting(self, event):
         self.is_counting = False
         self.total_count = max(self.total_count, self.total_votes)
+        
+        # 停止倒计时
+        self.stop_countdown_timer()
+        
+        # 如果是手动停止（不是倒计时结束），显示提示
+        if event is not None:
+            SilentInfoDialog(self, "统计已手动停止！").ShowModal()
+        
         self.start_btn.Enable(True)
         self.stop_btn.Enable(False)
         self.btn_niconico.Enable(True)
@@ -252,7 +367,10 @@ class VoteFrame(wx.Frame):
     
     def show_results(self, event, mode="niconico"):
         vote_counts = [self.vote_counts[i] for i in range(1,6)]
-        labels = ["とても良かった", "まぁまぁ良かった", "ふつうだった", "あまり良くなかった", "良くなかった"]
+        labels = []
+        for level, entry in self.label_entries.items():
+            label = entry.GetValue().strip()
+            labels.append(label)
         include_repo = self.include_repo_checkbox.GetValue()
         result_exporter.export_result_html(
             self.title_entry.GetValue(), vote_counts, self.total_count, labels,

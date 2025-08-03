@@ -36,5 +36,20 @@
 - **范围匹配**: `^[1-5]$` (匹配1到5的任意数字)
 - 其他需求可以直接去问AI
 
+## 开发
+
+- 安装依赖
+   ```sh
+   pip install -r ./requirements.txt
+   ```
+- 测试GUI界面
+   ```sh
+   python test_gui.py
+   ```
+- `pyinstaller`打包为可执行
+   ```sh
+   pyinstaller -y ./blivechat-niconico-rating.spec
+   ```
+
 ## 参考
 参考：[blivechat](https://github.com/xfgryujk/blivechat)
