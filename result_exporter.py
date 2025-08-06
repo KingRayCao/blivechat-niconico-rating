@@ -1,6 +1,6 @@
 import os
 
-def export_result_html(title, vote_counts, total_count, labels, filename=None, mode="niconico", include_repo=False):
+def export_result_html(title, vote_counts, total_count, default_level, labels, filename=None, mode="niconico", include_repo=False):
     if filename is None:
         result_dir = os.path.abspath("result")
         if not os.path.exists(result_dir):
@@ -10,7 +10,7 @@ def export_result_html(title, vote_counts, total_count, labels, filename=None, m
     sum_raw_votes = sum(vote_counts)
     if mode == "niconico":
         nico_counts = vote_counts.copy()
-        nico_counts[0] = max(total_count - sum(nico_counts[1:]), 0)
+        nico_counts[default_level - 1] = max(total_count - sum(nico_counts[:default_level - 1]) - sum(nico_counts[default_level:]), 0)
         counts = nico_counts
     else:
         counts = vote_counts

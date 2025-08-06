@@ -190,7 +190,7 @@ class VoteFrame(wx.Frame):
         result_group = wx.StaticBox(panel, label="结果页面设置")
         result_sizer = wx.StaticBoxSizer(result_group, wx.VERTICAL)
         
-        result_grid = wx.FlexGridSizer(3, 4, 5, 5)
+        result_grid = wx.FlexGridSizer(4, 4, 5, 5)
         result_grid.Add(wx.StaticText(panel, label="标题:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.title_entry = wx.TextCtrl(panel, value="Q. 今日の番組はいかがでしたか？", size=(250, -1))
         result_grid.Add(self.title_entry, 1, wx.EXPAND)
@@ -205,12 +205,18 @@ class VoteFrame(wx.Frame):
             entry = wx.TextCtrl(panel, value=f"{self.label_defaults[level]}", size=(250, -1))
             self.label_entries[level] = entry
             result_grid.Add(entry, 1, wx.EXPAND)
+
+        label = wx.StaticText(panel, label="未投票的默认等级：")
+        result_grid.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.default_level_entry = wx.ComboBox(panel, value="1", choices=["1", "2", "3", "4", "5"], size=(100, -1), style=wx.CB_READONLY)
+        result_grid.Add(self.default_level_entry, 0, wx.ALIGN_CENTER_VERTICAL)
+
+        result_grid.AddStretchSpacer()
+        self.include_repo_checkbox = wx.CheckBox(panel, label="在结果中包含github项目地址")
+        self.include_repo_checkbox.SetValue(False)
+        result_grid.Add(self.include_repo_checkbox, 0, wx.LEFT | wx.BOTTOM, 10)
         
         result_sizer.Add(result_grid, 0, wx.EXPAND | wx.ALL, 5)
-        
-        self.include_repo_checkbox = wx.CheckBox(panel, label="在结果中包含github项目地址（帮忙宣传秋梨膏！）")
-        self.include_repo_checkbox.SetValue(False)
-        result_sizer.Add(self.include_repo_checkbox, 0, wx.LEFT | wx.BOTTOM, 10)
         
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_niconico = wx.Button(panel, label="niconico风格统计")
@@ -373,7 +379,7 @@ class VoteFrame(wx.Frame):
             labels.append(label)
         include_repo = self.include_repo_checkbox.GetValue()
         result_exporter.export_result_html(
-            self.title_entry.GetValue(), vote_counts, self.total_count, labels,
+            self.title_entry.GetValue(), vote_counts, self.total_count, int(self.default_level_entry.GetValue()), labels,
             filename=self.result_html_path, mode=mode, include_repo=include_repo
         )
         SilentInfoDialog(self, f"HTML结果已导出\n请在OBS中使用浏览器源查看下方URL\n浏览器源推荐尺寸:900*600\n请注意，浏览器源的尺寸会影响投票结果的显示效果").ShowModal()
