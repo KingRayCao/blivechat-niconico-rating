@@ -23,6 +23,7 @@ DATAS = [
     ('plugin.json', '.'),
     ('LICENSE', '.'),
     ('icon.ico', '.'),
+    ('config.json', '.'),
     ('log/.gitkeep', 'log'),
 ]
 

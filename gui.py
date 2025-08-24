@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import os
 import re
+import json
 
 import wx
 import wx.grid
@@ -236,6 +237,25 @@ class VoteFrame(wx.Frame):
         self.result_html_path = result_path
         self.web_url_text = wx.TextCtrl(panel, value=result_path, style=wx.TE_READONLY)
         main_sizer.Add(self.web_url_text, 0, wx.EXPAND | wx.ALL, 10)
+
+        # 写入配置文件与读取配置文件的按钮，配置文件在当前目录下，文件名是config.json
+        self.config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        
+        # 配置文件按钮
+        config_group = wx.StaticBox(panel, label="配置文件管理")
+        config_sizer = wx.StaticBoxSizer(config_group, wx.VERTICAL)
+        
+        config_btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.save_config_btn = wx.Button(panel, label="保存当前配置")
+        self.save_config_btn.Bind(wx.EVT_BUTTON, self.save_config)
+        config_btn_sizer.Add(self.save_config_btn, 0, wx.RIGHT, 10)
+        
+        self.load_config_btn = wx.Button(panel, label="加载配置文件")
+        self.load_config_btn.Bind(wx.EVT_BUTTON, self.load_config)
+        config_btn_sizer.Add(self.load_config_btn, 0)
+        
+        config_sizer.Add(config_btn_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        main_sizer.Add(config_sizer, 0, wx.EXPAND | wx.ALL, 5)
         
         panel.SetSizer(main_sizer)
         self.update_display()
@@ -245,7 +265,8 @@ class VoteFrame(wx.Frame):
             pattern = entry.GetValue().strip()
             self.vote_levels[level] = pattern if pattern else f"^{level}$"
         listener.update_vote_patterns()
-        SilentInfoDialog(self, "投票设置已更新！").ShowModal()
+        if not(event is None):
+            SilentInfoDialog(self, "投票设置已更新！").ShowModal()
     
     def test_regex(self, level):
         pattern = self.vote_entries[level].GetValue().strip()
@@ -307,6 +328,12 @@ class VoteFrame(wx.Frame):
             self.total_count = int(self.initial_count_entry.GetValue())
         except ValueError:
             self.total_count = 0
+
+        # 将输出的html文件恢复成所有数值为0
+        self.show_results(None, mode="traditional")
+
+        # 应用正则表达式设置
+        self.apply_settings(None)
         
         # 启动倒计时
         self.start_countdown_timer()
@@ -382,7 +409,85 @@ class VoteFrame(wx.Frame):
             self.title_entry.GetValue(), vote_counts, self.total_count, int(self.default_level_entry.GetValue()), labels,
             filename=self.result_html_path, mode=mode, include_repo=include_repo
         )
-        SilentInfoDialog(self, f"HTML结果已导出\n请在OBS中使用浏览器源查看下方URL\n浏览器源推荐尺寸:900*600\n请注意，浏览器源的尺寸会影响投票结果的显示效果").ShowModal()
+        if not(event is None):
+            SilentInfoDialog(self, f"HTML结果已导出\n请在OBS中使用浏览器源查看下方URL\n浏览器源推荐尺寸:900*600\n请注意，浏览器源的尺寸会影响投票结果的显示效果").ShowModal()
     
     def on_close(self, event):
         SilentInfoDialog(self, "为防止误操作，此界面无法被关闭！\n如需关闭，请直接关闭blivechat主程序！").ShowModal()
+    
+    def save_config(self, event):
+        """保存当前配置到配置文件"""
+        try:
+            config = {
+                # 投票正则表达式设置
+                "vote_patterns": {},
+                # 统计设置
+                "initial_count": self.initial_count_entry.GetValue(),
+                "countdown_minutes": self.minutes_entry.GetValue(),
+                "countdown_seconds": self.seconds_entry.GetValue(),
+                # 结果页面设置
+                "title": self.title_entry.GetValue(),
+                "labels": {},
+                "default_level": self.default_level_entry.GetValue(),
+                "include_repo": self.include_repo_checkbox.GetValue()
+            }
+            
+            # 保存投票正则表达式
+            for level, entry in self.vote_entries.items():
+                config["vote_patterns"][str(level)] = entry.GetValue()
+            
+            # 保存等级标签
+            for level, entry in self.label_entries.items():
+                config["labels"][str(level)] = entry.GetValue()
+            
+            # 写入配置文件
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            
+            SilentInfoDialog(self, f"配置已保存到插件目录下").ShowModal()
+            
+        except Exception as e:
+            SilentInfoDialog(self, f"保存配置失败：{str(e)}").ShowModal()
+    
+    def load_config(self, event):
+        """从配置文件加载配置"""
+        try:
+            if not os.path.exists(self.config_path):
+                SilentInfoDialog(self, f"配置文件不存在").ShowModal()
+                return
+            
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # 加载投票正则表达式
+            if "vote_patterns" in config:
+                for level_str, pattern in config["vote_patterns"].items():
+                    level = int(level_str)
+                    if level in self.vote_entries:
+                        self.vote_entries[level].SetValue(pattern)
+            
+            # 加载统计设置
+            if "initial_count" in config:
+                self.initial_count_entry.SetValue(config["initial_count"])
+            if "countdown_minutes" in config:
+                self.minutes_entry.SetValue(config["countdown_minutes"])
+            if "countdown_seconds" in config:
+                self.seconds_entry.SetValue(config["countdown_seconds"])
+            
+            # 加载结果页面设置
+            if "title" in config:
+                self.title_entry.SetValue(config["title"])
+            if "labels" in config:
+                for level_str, label in config["labels"].items():
+                    level = int(level_str)
+                    if level in self.label_entries:
+                        self.label_entries[level].SetValue(label)
+            if "default_level" in config:
+                self.default_level_entry.SetValue(config["default_level"])
+            if "include_repo" in config:
+                self.include_repo_checkbox.SetValue(config["include_repo"])
+            
+            SilentInfoDialog(self, f"配置已从插件目录下加载").ShowModal()
+            
+        except Exception as e:
+            SilentInfoDialog(self, f"加载配置失败：{str(e)}").ShowModal()
